@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="pt-PT">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Analisador Avançado de Perfis ICC (Perdas e Gamut)</title>
+    <style>
+        :root { --bg: #0f172a; --panel: #1e293b; --text: #f8fafc; --border: #334155; }
+        body { font-family: system-ui, sans-serif; background-color: var(--bg); color: var(--text); padding: 20px; display: flex; flex-direction: column; align-items: center; }
+        h1 { margin-bottom: 5px; text-align: center; }
+        p { color: #94a3b8; margin-bottom: 30px; text-align: center; }
+        
+        .dashboard { display: grid; grid-template-columns: 1fr; gap: 20px; width: 100%; max-width: 1300px; }
+        @media (min-width: 1000px) { .dashboard { grid-template-columns: 450px 1fr; } }
+        
+        .card { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 20px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); }
+        h3 { margin-top: 0; padding-bottom: 10px; border-bottom: 1px solid var(--border); color: #fff; }
+        
+        canvas { background: #0b0f19; border-radius: 8px; width: 100%; max-width: 450px; border: 1px solid var(--border); margin: 0 auto; display: block; }
+        
+        /* Slots de Upload */
+        .slots-container { display: flex; flex-direction: column; gap: 10px; }
+        .slot { display: flex; align-items: center; gap: 15px; background: rgba(0,0,0,0.2); padding: 12px; border-radius: 8px; border-left: 5px solid transparent; }
+        .slot input[type="checkbox"] { transform: scale(1.3); cursor: pointer; }
+        .slot input[type="file"] { flex: 1; font-size: 0.85rem; color: #94a3b8; cursor: pointer; }
+        .slot-name { font-weight: 600; font-size: 0.9rem; width: 100px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+        .s-0 { border-color: #3b82f6; } .c-0 { color: #3b82f6; }
+        .s-1 { border-color: #ec4899; } .c-1 { color: #ec4899; }
+        .s-2 { border-color: #22c55e; } .c-2 { color: #22c55e; }
+        .s-3 { border-color: #eab308; } .c-3 { color: #eab308; }
+        .s-4 { border-color: #a855f7; } .c-4 { color: #a855f7; }
+
+        /* Tabela Principal */
+        .meta-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; text-align: left; margin-bottom: 20px; }
+        .meta-table th, .meta-table td { padding: 10px; border-bottom: 1px solid var(--border); }
+        .meta-table th { color: #94a3b8; font-weight: 500; }
+        
+        /* Grid de Detalhes (Cartões Individuais) */
+        .details-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 15px; margin-top: 15px; }
+        .detail-card { background: #0b0f19; border: 1px solid var(--border); border-radius: 8px; padding: 15px; font-size: 0.85rem; }
+        .detail-card h4 { margin: 0 0 10px 0; font-size: 0.95rem; display: flex; align-items: center; gap: 8px; }
+        .d-row { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px dashed #1e293b; }
+        .d-row:last-child { border-bottom: none; }
+        .d-label { color: #94a3b8; }
+        .d-val { font-family: monospace; color: #e2e8f0; font-weight: bold; }
+        
+        .badge-warn { background: rgba(234, 179, 8, 0.2); color: #eab308; padding: 2px 6px; border-radius: 4px; font-size: 0.7rem; border: 1px solid #eab308; }
+        .badge-ok { background: rgba(34, 197, 94, 0.2); color: #22c55e; padding: 2px 6px; border-radius: 4px; font-size: 0.7rem; border: 1px solid #22c55e; }
+    </style>
+</head>
+<body>
+
+    <h1>Analisador Avançado ICC</h1>
+    <p>Inspeção de metadados internos, extração de matriz XYZ e cálculo analítico de perda de área de Gamut.</p>
+
+    <div class="dashboard">
+        <div class="card">
+            <h3>Diagrama CIE 1931 xy</h3>
+            <canvas id="cieCanvas" width="450" height="450"></canvas>
+            
+            <h3 style="margin-top: 20px;">Carregar Perfis</h3>
+            <div class="slots-container" id="slotsContainer"></div>
+        </div>
+
+        <div class="card">
+            <h3>Matriz Tricolor Primária</h3>
+            <div style="overflow-x: auto;">
+                <table class="meta-table" id="metaTable">
+                    <thead>
+                        <tr>
+                            <th>Perfil</th>
+                            <th>Red (x,y)</th>
+                            <th>Green (x,y)</th>
+                            <th>Blue (x,y)</th>
+                            <th>White Point</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tableBody">
+                        <tr><td colspan="5" style="color:#475569; text-align:center; font-style:italic;">Nenhum perfil carregado.</td></tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <h3 style="margin-top: 10px;">Diagnóstico Estrutural & Cobertura de Gamut</h3>
+            <div class="details-grid" id="detailsContainer">
+                <p style="color:#475569; font-style:italic;">Carregue os perfis para calcular as áreas matemáticas e ver os detalhes.</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('cieCanvas');
+        const ctx = canvas.getContext('2d');
+        const profilesData = [null, null, null, null, null];
+        const slotColors = ['#3b82f6', '#ec4899', '#22c55e', '#eab308', '#a855f7'];
+
+        const slotsContainer = document.getElementById('slotsContainer');
+        for (let i = 0; i < 5; i++) {
+            slotsContainer.innerHTML += `
+                <div class="slot s-${i}">
+                    <input type="checkbox" id="chk-${i}" checked onchange="drawGraph()">
+                    <span class="slot-name c-${i}" id="name-${i}">Slot ${i + 1}</span>
+                    <input type="file" id="file-${i}" accept=".icc,.icm" onchange="handleUpload(event, ${i})">
+                </div>
+            `;
+        }
+
+        // --- MOTOR MATEMÁTICO (ÁREA DO GAMUT) ---
+        function calcularAreaTriangulo(r, g, b) {
+            if (!r || !g || !b) return 0;
+            return 0.5 * Math.abs(r.x * (g.y - b.y) + g.x * (b.y - r.y) + b.x * (r.y - g.y));
+        }
+        // Área aproximada do sRGB no plano CIE 1931 xy
+        const AREA_SRGB = 0.0332;
+
+        // --- MOTOR DE EXTRAÇÃO AVANÇADO ---
+        function readString(view, offset, length) {
+            let str = '';
+            for (let i = 0; i < length; i++) {
+                const char = view.getUint8(offset + i);
+                if (char > 31 && char < 127) str += String.fromCharCode(char);
+            }
+            return str.trim() || 'N/A';
+        }
+
+        function readS15Fixed16(view, offset) {
+            return view.getInt32(offset) / 65536.0;
+        }
+
+        function parseICC(buffer, file) {
+            const view = new DataView(buffer);
+            if (readString(view, 36, 4) !== 'acsp') return null;
+
+            // Extração de Metadados do Cabeçalho
+            const meta = {
+                filename: file.name,
+                filesize: (file.size / 1024).toFixed(1) + ' KB',
+                versao: `${view.getUint8(8)}.${view.getUint8(9) >> 4}`,
+                cmm: readString(view, 4, 4),
+                classe: readString(view, 12, 4),
+                espacoCor: readString(view, 16, 4),
+                espacoConexao: readString(view, 20, 4),
+                plataforma: readString(view, 40, 4),
+                fabricante: readString(view, 48, 4),
+                tags: {}
+            };
+
+            // Varredura da Tabela de Tags
+            const tagCount = view.getUint32(128);
+            meta.tagCount = tagCount;
+            
+            for (let i = 0; i < tagCount; i++) {
+                const off = 132 + (i * 12);
+                meta.tags[readString(view, off, 4)] = { offset: view.getUint32(off + 4) };
+            }
+
+            meta.hasChad = !!meta.tags['chad'];
+            meta.hasPara = !!meta.tags['para']; // Curvas Paramétricas V4
+
+            function getXYZ(tag) {
+                if (!meta.tags[tag]) return null;
+                const o = meta.tags[tag].offset;
+                const X = readS15Fixed16(view, o + 8);
+                const Y = readS15Fixed16(view, o + 12);
+                const Z = readS15Fixed16(view, o + 16);
+                const sum = X + Y + Z;
+                return sum > 0 ? { x: X / sum, y: Y / sum } : null;
+            }
+
+            meta.primaries = { 
+                red: getXYZ('rXYZ'), 
+                green: getXYZ('gXYZ'), 
+                blue: getXYZ('bXYZ'),
+                white: getXYZ('wtpt')
+            };
+            
+            return meta;
+        }
+
+        function handleUpload(event, index) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            document.getElementById(`name-${index}`).textContent = file.name;
+
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const data = parseICC(e.target.result, file);
+                if (data && data.primaries.red) {
+                    profilesData[index] = data;
+                } else {
+                    alert('Perfil não contém matriz XYZ nativa suportada para extração direta.');
+                    profilesData[index] = null;
+                    document.getElementById(`name-${index}`).textContent = `Erro`;
+                }
+                updateDashboard();
+            };
+            reader.readAsArrayBuffer(file);
+        }
+
+        // --- RENDERIZAÇÃO ---
+        const cieLocus = [{x:0.174,y:0.005}, {x:0.114,y:0.080}, {x:0.053,y:0.230}, {x:0.004,y:0.575}, {x:0.074,y:0.812}, {x:0.270,y:0.792}, {x:0.485,y:0.672}, {x:0.640,y:0.355}, {x:0.734,y:0.265}];
+
+        function drawGraph() {
+            ctx.clearRect(0,0, canvas.width, canvas.height);
+            const pad = 40, sz = canvas.width - pad*2;
+            const mapC = (x,y) => ({ x: pad + (x*sz), y: canvas.height - pad - (y*sz) });
+
+            ctx.beginPath();
+            cieLocus.forEach((p,i) => { const pt = mapC(p.x,p.y); i===0?ctx.moveTo(pt.x,pt.y):ctx.lineTo(pt.x,pt.y); });
+            ctx.closePath(); 
+            ctx.fillStyle = '#111827'; ctx.fill(); ctx.strokeStyle = '#334155'; ctx.lineWidth = 2; ctx.stroke();
+
+            profilesData.forEach((prof, idx) => {
+                if (prof && document.getElementById(`chk-${idx}`).checked) {
+                    const pr = mapC(prof.primaries.red.x, prof.primaries.red.y);
+                    const pg = mapC(prof.primaries.green.x, prof.primaries.green.y);
+                    const pb = mapC(prof.primaries.blue.x, prof.primaries.blue.y);
+                    
+                    ctx.beginPath(); ctx.moveTo(pr.x, pr.y); ctx.lineTo(pg.x, pg.y); ctx.lineTo(pb.x, pb.y); ctx.closePath();
+                    ctx.strokeStyle = slotColors[idx]; ctx.lineWidth = 2.5; ctx.stroke();
+                    ctx.fillStyle = slotColors[idx] + '22'; ctx.fill();
+
+                    // Desenha o Ponto Branco
+                    if(prof.primaries.white) {
+                        const pw = mapC(prof.primaries.white.x, prof.primaries.white.y);
+                        ctx.beginPath(); ctx.arc(pw.x, pw.y, 3, 0, 2*Math.PI);
+                        ctx.fillStyle = '#fff'; ctx.fill();
+                        ctx.strokeStyle = slotColors[idx]; ctx.stroke();
+                    }
+                }
+            });
+        }
+
+        function updateDashboard() {
+            const tbody = document.getElementById('tableBody');
+            const details = document.getElementById('detailsContainer');
+            tbody.innerHTML = '';
+            details.innerHTML = '';
+            let hasData = false;
+
+            const fmt = (v) => v ? v.toFixed(4) : '-';
+
+            profilesData.forEach((prof, idx) => {
+                if (prof) {
+                    hasData = true;
+                    // Tabela de Coordenadas
+                    tbody.innerHTML += `
+                        <tr>
+                            <td class="c-${idx}"><strong>${prof.filename.substring(0, 15)}</strong></td>
+                            <td>${fmt(prof.primaries.red?.x)}, ${fmt(prof.primaries.red?.y)}</td>
+                            <td>${fmt(prof.primaries.green?.x)}, ${fmt(prof.primaries.green?.y)}</td>
+                            <td>${fmt(prof.primaries.blue?.x)}, ${fmt(prof.primaries.blue?.y)}</td>
+                            <td>${fmt(prof.primaries.white?.x)}, ${fmt(prof.primaries.white?.y)}</td>
+                        </tr>
+                    `;
+
+                    // Cálculo da Área de Gamut
+                    let areaTexto = "N/A";
+                    if (prof.primaries.red && prof.primaries.green && prof.primaries.blue) {
+                        const area = calcularAreaTriangulo(prof.primaries.red, prof.primaries.green, prof.primaries.blue);
+                        const percentagemSrgb = ((area / AREA_SRGB) * 100).toFixed(1);
+                        areaTexto = `${percentagemSrgb}% (vs sRGB)`;
+                    }
+
+                    // Cartão de Detalhes
+                    const chadBadge = prof.hasChad ? '<span class="badge-warn">Presente</span>' : '<span class="badge-ok">Ausente</span>';
+                    
+                    const classDict = {'mntr': 'Monitor (mntr)', 'prtr': 'Impressora', 'scnr': 'Scanner'};
+                    const devClass = classDict[prof.classe.trim()] || prof.classe;
+
+                    details.innerHTML += `
+                        <div class="detail-card" style="border-top: 3px solid ${slotColors[idx]}">
+                            <h4 style="color:${slotColors[idx]}">${prof.filename}</h4>
+                            <div class="d-row"><span class="d-label">Área Relativa Gamut:</span> <span class="d-val" style="color: ${slotColors[idx]}; font-size: 1.1em;">${areaTexto}</span></div>
+                            <div class="d-row"><span class="d-label">Versão ICC:</span> <span class="d-val">v${prof.versao}</span></div>
+                            <div class="d-row"><span class="d-label">Tamanho:</span> <span class="d-val">${prof.filesize}</span></div>
+                            <div class="d-row"><span class="d-label">Espaço de Cor:</span> <span class="d-val">${prof.espacoCor}</span></div>
+                            <div class="d-row"><span class="d-label">Espaço de Conexão:</span> <span class="d-val">${prof.espacoConexao}</span></div>
+                            <div class="d-row"><span class="d-label">Tag 'chad' (Adaptação):</span> <span class="d-val">${chadBadge}</span></div>
+                        </div>
+                    `;
+                }
+            });
+
+            if (!hasData) {
+                tbody.innerHTML = `<tr><td colspan="5" style="color:#475569; text-align:center;">Nenhum perfil carregado.</td></tr>`;
+                details.innerHTML = `<p style="color:#475569; font-style:italic;">Carregue os perfis para calcular as áreas matemáticas e ver os detalhes.</p>`;
+            }
+            drawGraph();
+        }
+
+        drawGraph();
+    </script>
+</body>
+</html>

@@ -1,72 +1,78 @@
-# Conversor ICC Lossless (v4 para v2) 🎨
+# \# Conversor ICC Lossless (v4 para v2) 🎨
 
-Uma ferramenta web leve construída em Node.js para converter a assinatura de perfis de cor ICC V4 para V2 utilizando a técnica de **Header Patching**.
+# 
 
-## 📌 O Problema
-Softwares de ripagem mais antigos, plotters de impressão e alguns motores de renderização não suportam perfis de cor padrão ICC V4, exigindo o formato legado V2. A conversão tradicional entre versões frequentemente resulta em perda de qualidade na calibração, pois força o "esmagamento" de curvas matemáticas (v4) em tabelas LUT (v2), gerando erros de quantização (Delta-E).
+# Uma ferramenta de engenharia de cores de alta precisão para conversão de perfis ICC V4 (modernos) para V2 (legados) utilizando a técnica de \*\*Header Patching Lossless\*\*.
 
-## 💡 A Solução (Lossless)
-Em vez de re-interpolar o espaço de cor e degradar a precisão dependendo de binários externos (`.exe`), esta aplicação atua como um editor hexadecimal automatizado em memória nativa. O sistema lê o buffer binário do ficheiro `.icc`/`.icm`, localiza exatamente o offset do Byte 8 (onde a versão do formato é declarada) e aplica um patch fazendo o downgrade da assinatura de `0x04` para `0x02`. 
+# 
 
-**O resultado:** O software de destino aceita o ficheiro acreditando ser um V2 autêntico, mantendo 100% das matrizes e dados originais de calibração rigorosamente intocados.
+# \## 📌 O Problema
 
-## 🚀 Tecnologias Utilizadas
-* **Backend:** Node.js, Express
-* **Manipulação de Ficheiros:** Multer, manipulação nativa de Buffers (File System).
-* **Frontend:** HTML5, CSS3, JavaScript Vanilla (gerado dinamicamente pelo servidor).
+# Softwares de RIP antigos e sistemas legados rejeitam perfis ICC V4. A conversão tradicional via software de calibração degrada a precisão do perfil, introduzindo erros Delta-E através da re-interpolação de tabelas LUT.
 
-## 🛠️ Como Instalar e Rodar Localmente
+# 
 
-1. Clone o repositório:
-\`\`\`bash
-git clone https://github.com/SEU_USUARIO/conversor-icc-lossless.git
-\`\`\`
+# \## 💡 A Solução (Lossless)
 
-2. Navegue até a pasta do projeto:
-\`\`\`bash
-cd conversor-icc-lossless
-\`\`\`
+# Este conversor realiza o \*downgrade\* apenas da assinatura do cabeçalho do perfil ICC (Bytes 8-9).
 
-3. Instale as dependências:
-\`\`\`bash
-npm install
-\`\`\`
+# \* \*\*Integridade Total:\*\* As matrizes de cor e tabelas LUT permanecem bit a bit idênticas.
 
-4. Inicie o servidor:
-\`\`\`bash
-npm start
-\`\`\`
-*(Ou execute `node server.js`)*
+# \* \*\*Compatibilidade:\*\* O sistema alvo reconhece o perfil como um V2 autêntico.
 
-5. Aceda no seu navegador através do link local fornecido no terminal (ex: `http://127.0.0.1:8080`).
+# \* \*\*Diagnóstico:\*\* Inclui um Analisador de Gamut CIE 1931 com cálculo de perda de cobertura.
 
----
+# 
 
-## 🛑 Solução de Problemas Comuns (Troubleshooting)
+# \## 🚀 Funcionalidades
 
-Se estiver a configurar o ambiente no **Windows**, pode deparar-se com alguns erros comuns relacionados com políticas de segurança ou rede. Aqui estão as soluções rápidas:
+# 1\. \*\*Dashboard Central:\*\* Interface intuitiva (`index.html`).
 
-### 1. Erro: `O termo 'npm' não é reconhecido...`
-* **Causa:** O Node.js não está instalado ou não foi adicionado às Variáveis de Ambiente (PATH) do Windows.
-* **Solução:** Descarregue a versão LTS no [site oficial do Node.js](https://nodejs.org/). Durante a instalação, certifique-se de que a opção "Add to PATH" está selecionada. Após a instalação, reinicie completamente o terminal.
+# 2\. \*\*Conversor Lossless:\*\* Patch binário via servidor Node.js.
 
-### 2. Erro: `A execução de scripts foi desabilitada neste sistema` (PowerShell)
-* **Causa:** O Windows PowerShell bloqueia a execução de scripts (`npm.ps1`) por defeito por motivos de segurança.
-* **Solução:** Pode usar o *Prompt de Comando* (CMD) normal, ou liberar a execução no PowerShell rodando o seguinte comando como Administrador:
-  \`\`\`powershell
-  Set-ExecutionPolicy RemoteSigned -Scope CurrentUser
-  \`\`\`
-  *(Pressione 'S' ou 'Y' para confirmar).*
+# 3\. \*\*Analisador de Gamut:\*\* Motor avançado para visualização gráfica e cálculo de cobertura sRGB.
 
-### 3. Erro: `Cannot find module 'express'`
-* **Causa:** O servidor tentou iniciar, mas as bibliotecas não foram descarregadas para a pasta do projeto.
-* **Solução:** Execute o comando `npm install` para forçar o download das dependências (Express e Multer) listadas no ficheiro `package.json`.
+# 
 
-### 4. Erro no Navegador: `ERR_CONNECTION_REFUSED` (A página não carrega)
-* **Causa 1 (Terminal Fechado):** O servidor Node.js só funciona enquanto o terminal estiver aberto e o processo estiver a rodar. Se fechar a janela preta ou pressionar `Ctrl + C`, o servidor desliga e o navegador perde o acesso. **Solução:** Deixe o terminal minimizado a rodar em segundo plano.
-* **Causa 2 (Conflito IPv6):** Nas versões mais recentes do Node.js, tentar aceder via `localhost` pode causar conflito entre IPv4 e IPv6. **Solução:** Utilize o IP direto forçado pela aplicação. Escreva exatamente `http://127.0.0.1:8080` na barra de endereços do navegador.
+# \## ⚙️ Como Utilizar
 
----
+# 1\. \*\*Instalar:\*\* `npm install`
 
-## 📁 Estrutura do Projeto
-O sistema é auto-contido. Ao ser executado pela primeira vez, ele constrói automaticamente a interface web estática (`public/index.html`) e a pasta de trabalho temporária (`uploads/`), garantindo que a aplicação não falhe por ausência de diretórios base.
+# 2\. \*\*Executar:\*\* `node server.js`
+
+# 3\. \*\*Acesso:\*\* Abra `http://127.0.0.1:8080` no seu navegador.
+
+# 
+
+# \---
+
+# 
+
+# \## 📝 Changelog (Histórico)
+
+# 
+
+# \### \[1.1.0] - 2026-05-25 (Versão Atual)
+
+# \* \*\*Dashboard:\*\* Nova interface central para navegação.
+
+# \* \*\*Analisador:\*\* Motor avançado com cálculo matemático de perda de gamut em relação ao sRGB.
+
+# \* \*\*Arquitetura:\*\* Separação entre motor (server.js) e interface estática (public/).
+
+# \* \*\*Precisão:\*\* Ajuste da constante de área sRGB para 0.11205.
+
+# 
+
+# \### \[1.0.0] - Lançamento Inicial
+
+# \* Implementação do patching binário de cabeçalho ICC via Node.js Buffer.
+
+# 
+
+# \---
+
+# 
+
+# \*Ferramenta desenvolvida para diagnóstico e preservação de precisão em fluxos de trabalho de impressão.\*
+
